@@ -1,3 +1,5 @@
+CASE STUDY:
+
 Manufacturer name: OEM1
 Issue: Irregularities in CO emissions that occurs in ECU with a special software version
 Action: Investigation of engine parts list from 2008-2016
