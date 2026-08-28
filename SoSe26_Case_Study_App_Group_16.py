@@ -16,6 +16,7 @@ Run with:
 
 import streamlit as st
 import pandas as pd
+import pydeck as pdk
 from pathlib import Path
 
 # ------------------------------------------------------------------
@@ -181,12 +182,26 @@ st.markdown(
 # ------------------------------------------------------------------
 # Tabs (single-file "pages")
 # ------------------------------------------------------------------
-tab_overview, tab_map, tab_table = st.tabs(["Overview", "Map", "Data Table"])
+tab_overview, tab_map, tab_table = st.tabs(["Overview", "Map", "Dataset"])
 
 # ==========================================================
 # TAB 1: OVERVIEW
 # ==========================================================
 with tab_overview:
+    st.subheader("Key figures")
+
+    total_affected = len(df_filtered)
+    n_municipalities = df_filtered["Gemeinden"].nunique()
+    n_type11 = (df_filtered["Vehicle_Type"] == "Type11").sum()
+    n_type12 = (df_filtered["Vehicle_Type"] == "Type12").sum()
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Affected vehicles", f"{total_affected:,}")
+    col2.metric("Municipalities affected", f"{n_municipalities:,}")
+    col3.metric("Type11", f"{n_type11:,}")
+    col4.metric("Type12", f"{n_type12:,}")
+
+    st.markdown("---")
     st.subheader("Trends")
 
     col_left, col_right = st.columns(2)
@@ -227,33 +242,6 @@ with tab_overview:
         )
 
     st.markdown("---")
-    st.subheader("Key figures")
-
-    total_affected = len(df_filtered)
-    n_municipalities = df_filtered["Gemeinden"].nunique()
-    n_type11 = (df_filtered["Vehicle_Type"] == "Type11").sum()
-    n_type12 = (df_filtered["Vehicle_Type"] == "Type12").sum()
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Affected vehicles", f"{total_affected:,}")
-    col2.metric("Municipalities affected", f"{n_municipalities:,}")
-    col3.metric("Type11", f"{n_type11:,}")
-    col4.metric("Type12", f"{n_type12:,}")
-
-    st.markdown("---")
-    st.subheader("Geographic preview")
-    st.caption(
-        "Affected vehicles by registered municipality. "
-        "See the Map tab for the full interactive view."
-    )
-
-    map_data = df_filtered.dropna(subset=["Breitengrad", "Laengengrad"])[
-        ["Breitengrad", "Laengengrad"]
-    ].rename(columns={"Breitengrad": "lat", "Laengengrad": "lon"})
-
-    st.map(map_data, color=PRIMARY_LIGHT_BLUE, size=10)
-
-    st.markdown("---")
     st.caption(
         "Use the filters in the sidebar to narrow the analysis by vehicle "
         "type, registration date, or municipality. See the Map and Data "
@@ -261,15 +249,169 @@ with tab_overview:
     )
 
 # ==========================================================
-# TAB 2: MAP (placeholder for now)
+# TAB 2: MAP
 # ==========================================================
 with tab_map:
     st.subheader("Geographic distribution")
-    st.info("Map view — to be implemented next.")
+    st.caption(
+        "Each point represents a municipality. Dot size and colour "
+        "intensity scale with the number of affected vehicles registered "
+        "there — larger, darker points indicate higher concentration."
+    )
+
+    muni_agg = (
+        df_filtered.dropna(subset=["Breitengrad", "Laengengrad"])
+        .groupby(["Gemeinden", "Breitengrad", "Laengengrad"], as_index=False)
+        .size()
+        .rename(columns={"size": "Affected_Vehicles"})
+    )
+
+    if muni_agg.empty:
+        st.warning("No data to display for the current filter selection.")
+    else:
+        max_count = muni_agg["Affected_Vehicles"].max()
+
+        # Radius: square-root scale so *area* (not raw radius) is
+        # proportional to vehicle count -- this avoids the largest
+        # municipalities visually overwhelming the map.
+        MIN_RADIUS = 300
+        MAX_RADIUS = 6000
+        muni_agg["radius"] = MIN_RADIUS + (
+            (muni_agg["Affected_Vehicles"] / max_count) ** 0.5
+        ) * (MAX_RADIUS - MIN_RADIUS)
+
+        # Colour: light blue (low density) -> dark navy (high density)
+        LIGHT = (93, 173, 226)   # matches the app's light-blue accent
+        DARK = (21, 64, 96)
+
+        def density_color(count: int) -> list:
+            ratio = count / max_count
+            r = int(LIGHT[0] + (DARK[0] - LIGHT[0]) * ratio)
+            g = int(LIGHT[1] + (DARK[1] - LIGHT[1]) * ratio)
+            b = int(LIGHT[2] + (DARK[2] - LIGHT[2]) * ratio)
+            return [r, g, b, 180]
+
+        muni_agg["color"] = muni_agg["Affected_Vehicles"].apply(density_color)
+
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=muni_agg,
+            get_position=["Laengengrad", "Breitengrad"],
+            get_radius="radius",
+            get_fill_color="color",
+            pickable=True,
+            opacity=0.7,
+            stroked=False,
+        )
+
+        view_state = pdk.ViewState(
+            latitude=muni_agg["Breitengrad"].mean(),
+            longitude=muni_agg["Laengengrad"].mean(),
+            zoom=5,
+        )
+
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=[layer],
+                initial_view_state=view_state,
+                tooltip={"text": "{Gemeinden}\n{Affected_Vehicles} affected vehicles"},
+            )
+        )
+
+        st.markdown("---")
+        st.markdown("#### Top 10 municipalities in current view")
+        st.dataframe(
+            muni_agg.sort_values("Affected_Vehicles", ascending=False)
+            .head(10)[["Gemeinden", "Affected_Vehicles"]]
+            .reset_index(drop=True),
+            use_container_width=True,
+        )
 
 # ==========================================================
-# TAB 3: DATA TABLE (placeholder for now)
+# TAB 3: DATASET
 # ==========================================================
 with tab_table:
-    st.subheader("Full affected vehicle dataset")
-    st.info("Data table view — to be implemented next.")
+    st.subheader("Dataset")
+    st.caption(
+        f"{len(df_filtered):,} rows match the current sidebar filters. "
+        "Use the column filters below to narrow it further."
+    )
+
+    with st.expander("Filter columns", expanded=False):
+        col_filter_mask = pd.Series(True, index=df_filtered.index)
+
+        for col in df_filtered.columns:
+            series = df_filtered[col]
+
+            if pd.api.types.is_datetime64_any_dtype(series):
+                col_min, col_max = series.min(), series.max()
+                if pd.isna(col_min) or pd.isna(col_max):
+                    continue
+                date_val = st.date_input(
+                    col,
+                    value=(col_min, col_max),
+                    min_value=col_min,
+                    max_value=col_max,
+                    key=f"filter_{col}",
+                )
+                if isinstance(date_val, tuple) and len(date_val) == 2:
+                    start, end = date_val
+                    col_filter_mask &= (series >= pd.Timestamp(start)) & (
+                        series <= pd.Timestamp(end)
+                    )
+
+            elif pd.api.types.is_numeric_dtype(series):
+                col_min = float(series.min())
+                col_max = float(series.max())
+                if col_min == col_max:
+                    continue
+                selected_range = st.slider(
+                    col,
+                    min_value=col_min,
+                    max_value=col_max,
+                    value=(col_min, col_max),
+                    key=f"filter_{col}",
+                )
+                col_filter_mask &= series.between(*selected_range)
+
+            else:
+                n_unique = series.nunique()
+                if n_unique <= 100:
+                    # Low-cardinality text column (e.g. Vehicle_Type):
+                    # exact-value multiselect.
+                    options = sorted(series.dropna().unique().tolist())
+                    selected = st.multiselect(
+                        col,
+                        options=options,
+                        default=[],
+                        key=f"filter_{col}",
+                        help="Leave empty to include all values.",
+                    )
+                    if selected:
+                        col_filter_mask &= series.isin(selected)
+                else:
+                    # High-cardinality text column (e.g. ID_Motor, Gemeinden):
+                    # a dropdown of thousands of options isn't practical,
+                    # so filter by substring instead.
+                    text_val = st.text_input(
+                        f"{col} contains",
+                        value="",
+                        key=f"filter_{col}",
+                    )
+                    if text_val:
+                        col_filter_mask &= (
+                            series.astype(str).str.contains(text_val, case=False, na=False)
+                        )
+
+    table_df = df_filtered[col_filter_mask]
+
+    st.markdown(f"**Showing {len(table_df):,} of {len(df_filtered):,} rows**")
+    st.dataframe(table_df, use_container_width=True, height=500)
+
+    csv_bytes = table_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download filtered data as CSV",
+        data=csv_bytes,
+        file_name="filtered_affected_vehicles.csv",
+        mime="text/csv",
+    )
