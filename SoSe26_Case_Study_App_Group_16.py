@@ -58,9 +58,20 @@ st.markdown(
         div[data-testid="stMetric"] {{
             background-color: {PRIMARY_LIGHT_BLUE_BG};
             border: 1px solid {PRIMARY_LIGHT_BLUE};
-            color: #21618C;
             border-radius: 8px;
             padding: 12px;
+        }}
+
+        /* Metric text: force dark, high-contrast colours regardless of
+           Streamlit's own theme, since the light-blue card background
+           needs dark text to stay readable. */
+        div[data-testid="stMetric"] [data-testid="stMetricLabel"] {{
+            color: #21618C !important;
+            font-weight: 600;
+        }}
+
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
+            color: #154360 !important;
         }}
 
         /* Tab highlight colour */
@@ -94,6 +105,15 @@ DATA_PATH = Path(__file__).parent / "data" / "SoSe26_Case_Study_finalData_Group_
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["Zulassung"] = pd.to_datetime(df["Zulassung"], errors="coerce")
+
+    # Coordinates are stored with a comma decimal separator (e.g. "12,746491").
+    # Convert to proper floats so they can be used for mapping.
+    for col in ["Laengengrad", "Breitengrad"]:
+        if col in df.columns and df[col].dtype == object:
+            df[col] = (
+                df[col].astype(str).str.replace(",", ".", regex=False).astype(float)
+            )
+
     return df
 
 
@@ -167,20 +187,7 @@ tab_overview, tab_map, tab_table = st.tabs(["Overview", "Map", "Data Table"])
 # TAB 1: OVERVIEW
 # ==========================================================
 with tab_overview:
-    st.subheader("Key figures")
-
-    total_affected = len(df_filtered)
-    n_municipalities = df_filtered["Gemeinden"].nunique()
-    n_type11 = (df_filtered["Vehicle_Type"] == "Type11").sum()
-    n_type12 = (df_filtered["Vehicle_Type"] == "Type12").sum()
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Affected vehicles", f"{total_affected:,}")
-    col2.metric("Municipalities affected", f"{n_municipalities:,}")
-    col3.metric("Type11", f"{n_type11:,}")
-    col4.metric("Type12", f"{n_type12:,}")
-
-    st.markdown("---")
+    st.subheader("Trends")
 
     col_left, col_right = st.columns(2)
 
@@ -218,6 +225,33 @@ with tab_overview:
             y="Affected_Vehicles",
             color=PRIMARY_LIGHT_BLUE,
         )
+
+    st.markdown("---")
+    st.subheader("Key figures")
+
+    total_affected = len(df_filtered)
+    n_municipalities = df_filtered["Gemeinden"].nunique()
+    n_type11 = (df_filtered["Vehicle_Type"] == "Type11").sum()
+    n_type12 = (df_filtered["Vehicle_Type"] == "Type12").sum()
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Affected vehicles", f"{total_affected:,}")
+    col2.metric("Municipalities affected", f"{n_municipalities:,}")
+    col3.metric("Type11", f"{n_type11:,}")
+    col4.metric("Type12", f"{n_type12:,}")
+
+    st.markdown("---")
+    st.subheader("Geographic preview")
+    st.caption(
+        "Affected vehicles by registered municipality. "
+        "See the Map tab for the full interactive view."
+    )
+
+    map_data = df_filtered.dropna(subset=["Breitengrad", "Laengengrad"])[
+        ["Breitengrad", "Laengengrad"]
+    ].rename(columns={"Breitengrad": "lat", "Laengengrad": "lon"})
+
+    st.map(map_data, color=PRIMARY_LIGHT_BLUE, size=10)
 
     st.markdown("---")
     st.caption(
