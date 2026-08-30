@@ -17,6 +17,7 @@ Run with:
 import streamlit as st
 import pandas as pd
 import pydeck as pdk
+import base64
 from pathlib import Path
 
 # ------------------------------------------------------------------
@@ -30,21 +31,71 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------
+# Static assets folder (per submission requirements: images, CSS, JS,
+# fonts live in www/, alongside this script)
+# ------------------------------------------------------------------
+WWW_DIR = Path(__file__).parent / "www"
+LOGO_PATH = WWW_DIR / "logo" / "logo.png"
+FONT_REGULAR_PATH = WWW_DIR / "fonts" / "SourceSans3-Regular.ttf"
+FONT_BOLD_PATH = WWW_DIR / "fonts" / "SourceSans3-Bold.ttf"
+
+# ------------------------------------------------------------------
 # Theming: light blue accent colour + Source Sans Pro font
 #
-# Source Sans Pro is loaded from Google Fonts here for simplicity.
-# If the submission must run fully offline / without internet access,
-# download the font files instead and place them in the www/ folder,
-# then reference them with a local @font-face rule (see note at the
-# bottom of this block).
+# Streamlit only auto-serves a folder literally named "static" (and
+# only with enableStaticServing=true in config.toml) -- a folder named
+# "www" is NOT served at a browser-facing URL out of the box. So rather
+# than referencing www/... as a URL (which would 404), font files are
+# read directly in Python and embedded as base64 data URIs below. This
+# also means the app works fully offline, with no dependency on Google
+# Fonts being reachable on the grading machine.
+#
+# If the local font files aren't present yet (e.g. not downloaded into
+# www/fonts/ yet), this falls back to loading Source Sans Pro from
+# Google Fonts, so the app still runs correctly in the meantime.
 # ------------------------------------------------------------------
 PRIMARY_LIGHT_BLUE = "#5DADE2"
 PRIMARY_LIGHT_BLUE_BG = "#EAF4FB"
 
+
+def _load_font_base64(path: Path) -> str | None:
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except FileNotFoundError:
+        return None
+
+
+_font_regular_b64 = _load_font_base64(FONT_REGULAR_PATH)
+_font_bold_b64 = _load_font_base64(FONT_BOLD_PATH)
+
+if _font_regular_b64:
+    _font_css = f"""
+    @font-face {{
+        font-family: 'Source Sans Pro';
+        src: url(data:font/ttf;base64,{_font_regular_b64}) format('truetype');
+        font-weight: 400;
+    }}
+    """
+    if _font_bold_b64:
+        _font_css += f"""
+        @font-face {{
+            font-family: 'Source Sans Pro';
+            src: url(data:font/ttf;base64,{_font_bold_b64}) format('truetype');
+            font-weight: 700;
+        }}
+        """
+else:
+    # Fallback while font files aren't bundled locally yet.
+    _font_css = (
+        "@import url('https://fonts.googleapis.com/css2?"
+        "family=Source+Sans+Pro:wght@400;600;700&display=swap');"
+    )
+
 st.markdown(
     f"""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap');
+        {_font_css}
 
         html, body, [class*="css"] {{
             font-family: 'Source Sans Pro', sans-serif;
@@ -89,13 +140,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# NOTE (offline font option):
-# @font-face {
-#     font-family: 'Source Sans Pro';
-#     src: url('www/SourceSansPro-Regular.ttf');
-# }
-# ... then place the .ttf files inside the www/ submission subfolder.
-
 # ------------------------------------------------------------------
 # Data loading (cached so the file is only read once per session)
 # ------------------------------------------------------------------
@@ -125,9 +169,12 @@ df = load_data(DATA_PATH)
 # (filters apply across all tabs via session state / shared df_filtered)
 # ------------------------------------------------------------------
 with st.sidebar:
-    # Replace with your own logo file, placed in the www/ folder, e.g.:
-    # st.image("www/logo.png", use_container_width=True)
-    st.markdown("### OEM1 Quality Science")
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), use_container_width=True)
+    else:
+        # Fallback while the logo file isn't placed in www/ yet.
+        st.markdown("### OEM1 Quality Science")
+
     st.markdown("---")
 
     st.markdown("#### Filters")
