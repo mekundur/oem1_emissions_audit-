@@ -21,7 +21,7 @@ import base64
 from pathlib import Path
 
 # ------------------------------------------------------------------
-# Page config (must be the first Streamlit command)
+# Page config
 # ------------------------------------------------------------------
 st.set_page_config(
     page_title="OEM1 Emissions Investigation",
@@ -31,29 +31,13 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------
-# Static assets folder (per submission requirements: images, CSS, JS,
-# fonts live in www/, alongside this script)
+# Static assets folder
 # ------------------------------------------------------------------
 WWW_DIR = Path(__file__).parent / "www"
 LOGO_PATH = WWW_DIR / "logo" / "logo.png"
 FONT_REGULAR_PATH = WWW_DIR / "fonts" / "SourceSans3-Regular.ttf"
 FONT_BOLD_PATH = WWW_DIR / "fonts" / "SourceSans3-Bold.ttf"
 
-# ------------------------------------------------------------------
-# Theming: light blue accent colour + Source Sans Pro font
-#
-# Streamlit only auto-serves a folder literally named "static" (and
-# only with enableStaticServing=true in config.toml) -- a folder named
-# "www" is NOT served at a browser-facing URL out of the box. So rather
-# than referencing www/... as a URL (which would 404), font files are
-# read directly in Python and embedded as base64 data URIs below. This
-# also means the app works fully offline, with no dependency on Google
-# Fonts being reachable on the grading machine.
-#
-# If the local font files aren't present yet (e.g. not downloaded into
-# www/fonts/ yet), this falls back to loading Source Sans Pro from
-# Google Fonts, so the app still runs correctly in the meantime.
-# ------------------------------------------------------------------
 PRIMARY_LIGHT_BLUE = "#5DADE2"
 PRIMARY_LIGHT_BLUE_BG = "#EAF4FB"
 
@@ -69,28 +53,22 @@ def _load_font_base64(path: Path) -> str | None:
 _font_regular_b64 = _load_font_base64(FONT_REGULAR_PATH)
 _font_bold_b64 = _load_font_base64(FONT_BOLD_PATH)
 
-if _font_regular_b64:
-    _font_css = f"""
+_font_css = f"""
+@font-face {{
+    font-family: 'Source Sans Pro';
+    src: url(data:font/ttf;base64,{_font_regular_b64}) format('truetype');
+    font-weight: 400;
+}}
+"""
+if _font_bold_b64:
+    _font_css += f"""
     @font-face {{
         font-family: 'Source Sans Pro';
-        src: url(data:font/ttf;base64,{_font_regular_b64}) format('truetype');
-        font-weight: 400;
+        src: url(data:font/ttf;base64,{_font_bold_b64}) format('truetype');
+        font-weight: 700;
     }}
     """
-    if _font_bold_b64:
-        _font_css += f"""
-        @font-face {{
-            font-family: 'Source Sans Pro';
-            src: url(data:font/ttf;base64,{_font_bold_b64}) format('truetype');
-            font-weight: 700;
-        }}
-        """
-else:
-    # Fallback while font files aren't bundled locally yet.
-    _font_css = (
-        "@import url('https://fonts.googleapis.com/css2?"
-        "family=Source+Sans+Pro:wght@400;600;700&display=swap');"
-    )
+
 
 st.markdown(
     f"""
@@ -166,7 +144,6 @@ df = load_data(DATA_PATH)
 
 # ------------------------------------------------------------------
 # Sidebar: logo + global filters
-# (filters apply across all tabs via session state / shared df_filtered)
 # ------------------------------------------------------------------
 with st.sidebar:
     if LOGO_PATH.exists():
@@ -222,8 +199,7 @@ df_filtered = df[mask].copy()
 # ------------------------------------------------------------------
 st.title("OEM1 Emissions Investigation")
 st.markdown(
-    "Overview of vehicles affected by the T2 control unit emissions issue, "
-    "prepared for OEM1 management."
+    "Overview of vehicles affected by the T2 control unit emissions issue. "
 )
 
 # ------------------------------------------------------------------
