@@ -1,17 +1,12 @@
 """
-SoSe26 Case Study - OEM1 Emissions Investigation
-Group 16
+SoSe26 Case Study - Group 16 - OEM1 Emissions Investigation
 
 Streamlit web application presenting the results of the T2 control unit
 emissions investigation to OEM1 management: affected vehicle counts,
 geographic distribution, and a full data table.
 
-Data source: SoSe26_Case_Study_finalData_Group_16.csv
-(must be located at Data/SoSe26_Case_Study_finalData_Group_16.csv,
-relative to this script, per submission folder structure)
-
-Run with:
-    streamlit run SoSe26_Case_Study_App_Group_16.py
+Run with on the terminal:
+    <streamlit run SoSe26_Case_Study_App_Group_16.py>
 """
 
 import streamlit as st
