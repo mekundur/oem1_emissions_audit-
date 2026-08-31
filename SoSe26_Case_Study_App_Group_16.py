@@ -118,7 +118,6 @@ st.markdown(
 # ------------------------------------------------------------------
 DATA_PATH = Path(__file__).parent / "data" / "SoSe26_Case_Study_finalData_Group_16.csv"
 
-
 @st.cache_data
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -134,8 +133,8 @@ def load_data(path: Path) -> pd.DataFrame:
 
     return df
 
-
 df = load_data(DATA_PATH)
+
 
 # ------------------------------------------------------------------
 # Sidebar: logo + global filters
@@ -226,44 +225,94 @@ with tab_overview:
 
     with col_left:
         st.markdown("#### Affected vehicles over time")
-        st.caption("Based on vehicle registration date")
+        st.caption("Monthly registrations and cumulative exposure")
 
         by_month = (
             df_filtered.set_index("Zulassung")
-            .resample("M")
+            .resample("ME")
             .size()
             .rename("Affected_Vehicles")
             .reset_index()
         )
+
+        by_month["Cumulative_Affected_Vehicles"] = (
+            by_month["Affected_Vehicles"].cumsum()
+        )
+
         st.line_chart(
             by_month,
             x="Zulassung",
-            y="Affected_Vehicles",
-            color=PRIMARY_LIGHT_BLUE,
+            y=["Affected_Vehicles", "Cumulative_Affected_Vehicles"],
+            color=[PRIMARY_LIGHT_BLUE, "#154360"],
         )
 
     with col_right:
-        st.markdown("#### Top 10 affected municipalities")
+        st.markdown("#### Vehicle type split")
 
-        top_municipalities = (
-            df_filtered["Gemeinden"]
+        type_split = (
+            df_filtered["Vehicle_Type"]
             .value_counts()
-            .head(10)
-            .rename_axis("Municipality")
+            .reindex(["Type11", "Type12"], fill_value=0)
+            .rename_axis("Vehicle_Type")
             .reset_index(name="Affected_Vehicles")
         )
-        st.bar_chart(
-            top_municipalities,
-            x="Municipality",
-            y="Affected_Vehicles",
-            color=PRIMARY_LIGHT_BLUE,
-        )
+
+        if type_split["Affected_Vehicles"].sum() == 0:
+            st.info("No vehicle type data for the current filter selection.")
+        else:
+            donut_spec = {
+                "mark": {
+                    "type": "arc",
+                    "innerRadius": 65,
+                    "outerRadius": 120,
+                },
+                "encoding": {
+                    "theta": {
+                        "field": "Affected_Vehicles",
+                        "type": "quantitative",
+                    },
+                    "color": {
+                        "field": "Vehicle_Type",
+                        "type": "nominal",
+                        "scale": {
+                            "domain": ["Type11", "Type12"],
+                            "range": [PRIMARY_LIGHT_BLUE, "#154360"],
+                        },
+                        "legend": {"title": "Vehicle type"},
+                    },
+                    "tooltip": [
+                        {"field": "Vehicle_Type", "type": "nominal"},
+                        {
+                            "field": "Affected_Vehicles",
+                            "type": "quantitative",
+                            "title": "Affected vehicles",
+                        },
+                    ],
+                },
+            }
+
+            st.vega_lite_chart(
+                type_split,
+                donut_spec,
+                use_container_width=True,
+            )
 
     st.markdown("---")
-    st.caption(
-        "Use the filters in the sidebar to narrow the analysis by vehicle "
-        "type, registration date, or municipality. See the Map and Data "
-        "Table tabs for further detail."
+    st.subheader("Top 10 affected municipalities")
+
+    top_municipalities = (
+        df_filtered["Gemeinden"]
+        .value_counts()
+        .head(10)
+        .rename_axis("Municipality")
+        .reset_index(name="Affected_Vehicles")
+    )
+
+    st.bar_chart(
+        top_municipalities,
+        x="Municipality",
+        y="Affected_Vehicles",
+        color=PRIMARY_LIGHT_BLUE,
     )
 
 # ==========================================================
